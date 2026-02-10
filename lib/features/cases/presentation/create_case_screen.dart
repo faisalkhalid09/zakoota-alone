@@ -1,8 +1,12 @@
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/auth_service.dart';
+import '../../cases/services/case_service.dart';
 
 /// Create Case Screen - Post a new legal case to marketplace
 class CreateCaseScreen extends StatefulWidget {
@@ -18,6 +22,8 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
   final _cityController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _budgetController = TextEditingController();
+  final _caseService = CaseService();
+  final _authService = AuthService();
 
   String? _selectedCategory;
   final List<String> _categories = [
@@ -28,7 +34,9 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
     'Property',
   ];
 
-  final List<String> _attachedFiles = [];
+  String _meetingPreference = 'in_person'; // Default
+  // Each item is { 'file': File, 'title': String, 'controller': TextEditingController }
+  final List<Map<String, dynamic>> _attachedFiles = [];
   bool _isSubmitting = false;
 
   @override
@@ -37,7 +45,48 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
     _cityController.dispose();
     _descriptionController.dispose();
     _budgetController.dispose();
+    // Dispose controllers for attachments
+    for (var attachment in _attachedFiles) {
+      (attachment['controller'] as TextEditingController).dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _pickFiles() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'],
+      );
+
+      if (result != null) {
+        setState(() {
+          for (var path in result.paths) {
+            if (path != null) {
+              File file = File(path);
+              String fileName = file.path.split(Platform.pathSeparator).last;
+              _attachedFiles.add({
+                'file': file,
+                'title': fileName, // Default title is filename
+                'controller': TextEditingController(text: fileName),
+              });
+            }
+          }
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error picking files: $e')),
+      );
+    }
+  }
+
+  void _removeFile(int index) {
+    setState(() {
+      final attachment = _attachedFiles.removeAt(index);
+      (attachment['controller'] as TextEditingController).dispose();
+    });
   }
 
   Future<void> _submitCase() async {
@@ -45,38 +94,79 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
       return;
     }
 
+    // Validate attachment titles
+    for (var attachment in _attachedFiles) {
+      String title =
+          (attachment['controller'] as TextEditingController).text.trim();
+      if (title.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Please provide a title for all attachments.')),
+        );
+        return;
+      }
+      attachment['title'] = title; // Update title from controller
+    }
+
+    final user = _authService.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You must be logged in to post a case.')),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final double budget = _budgetController.text.isNotEmpty
+          ? double.tryParse(_budgetController.text) ?? 0.0
+          : 0.0;
 
-    if (!mounted) return;
+      // Prepare attachments for service (remove controller)
+      final serviceAttachments = _attachedFiles
+          .map((a) => {
+                'file': a['file'],
+                'title': a['title'],
+              })
+          .toList();
 
-    setState(() => _isSubmitting = false);
+      await _caseService.createCase(
+        clientId: user.uid,
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        category: _selectedCategory!,
+        city: _cityController.text.trim(),
+        budgetMin: budget,
+        budgetMax: budget,
+        meetingPreference: _meetingPreference,
+        attachments: serviceAttachments,
+      );
 
-    // Show success dialog
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => _SuccessDialog(),
-    );
+      if (!mounted) return;
 
-    if (!mounted) return;
+      // Show success dialog
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _SuccessDialog(),
+      );
 
-    // Navigate back to My Cases
-    context.go('/client-cases');
-  }
+      if (!mounted) return;
 
-  void _addMockFile() {
-    setState(() {
-      _attachedFiles.add('Evidence_${_attachedFiles.length + 1}.pdf');
-    });
-  }
-
-  void _removeFile(int index) {
-    setState(() {
-      _attachedFiles.removeAt(index);
-    });
+      // Navigate back to My Cases
+      context.go('/client-cases');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to post case: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   @override
@@ -155,6 +245,9 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please enter a case title';
+                        }
+                        if (value.trim().length < 5) {
+                          return 'Title match be at least 5 characters';
                         }
                         return null;
                       },
@@ -255,7 +348,8 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
                       maxLines: 8,
                       decoration: InputDecoration(
                         labelText: 'Description *',
-                        hintText: 'Describe your case in detail...',
+                        hintText:
+                            'Describe your case in detail... (Min 50 chars)',
                         alignLabelWithHint: true,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(AppRadius.md),
@@ -280,8 +374,8 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please describe your case';
                         }
-                        if (value.trim().length < 20) {
-                          return 'Description must be at least 20 characters';
+                        if (value.trim().length < 50) {
+                          return 'Description must be at least 50 characters';
                         }
                         return null;
                       },
@@ -295,7 +389,7 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: InputDecoration(
-                        labelText: 'Budget Range (Optional)',
+                        labelText: 'Budget (Required)',
                         hintText: 'e.g., 50000',
                         prefixText: 'PKR ',
                         prefixIcon: PhosphorIcon(
@@ -317,6 +411,52 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
                           ),
                         ),
                       ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter a budget';
+                        }
+                        return null;
+                      },
+                    ),
+
+                    const SizedBox(height: AppSpacing.lg),
+
+                    // Meeting Preference
+                    Text(
+                      'Meeting Preference',
+                      style: textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.grey300),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
+                      child: Column(
+                        children: [
+                          RadioListTile<String>(
+                            title: const Text(
+                                'In-Person (Visit Lawyer\'s Office)'),
+                            value: 'in_person',
+                            groupValue: _meetingPreference,
+                            onChanged: (value) =>
+                                setState(() => _meetingPreference = value!),
+                            activeColor: AppColors.secondary,
+                          ),
+                          const Divider(height: 0),
+                          RadioListTile<String>(
+                            title: const Text('Virtual (Video Call)'),
+                            value: 'virtual',
+                            groupValue: _meetingPreference,
+                            onChanged: (value) =>
+                                setState(() => _meetingPreference = value!),
+                            activeColor: AppColors.secondary,
+                          ),
+                        ],
+                      ),
                     ),
 
                     const SizedBox(height: AppSpacing.xl),
@@ -330,11 +470,18 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
                         color: AppColors.primary,
                       ),
                     ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'Please provide a title for each document to help lawyers understand its purpose (e.g., "FIR Copy", "Property Deed").',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                     const SizedBox(height: AppSpacing.md),
 
                     // Upload Button
                     InkWell(
-                      onTap: _addMockFile,
+                      onTap: _pickFiles,
                       borderRadius: BorderRadius.circular(AppRadius.md),
                       child: Container(
                         padding: const EdgeInsets.all(AppSpacing.xl),
@@ -376,38 +523,90 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
 
                     const SizedBox(height: AppSpacing.md),
 
-                    // Attached Files List
+                    // Attached Files List with Title Input
                     if (_attachedFiles.isNotEmpty) ...[
                       ...List.generate(_attachedFiles.length, (index) {
+                        final attachment = _attachedFiles[index];
+                        final controller =
+                            attachment['controller'] as TextEditingController;
+
                         return Container(
-                          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          margin: const EdgeInsets.only(bottom: AppSpacing.md),
                           padding: const EdgeInsets.all(AppSpacing.md),
                           decoration: BoxDecoration(
-                            color: AppColors.success.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(AppRadius.sm),
-                            border: Border.all(
-                              color: AppColors.success.withOpacity(0.3),
-                            ),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            border: Border.all(color: AppColors.grey300),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              PhosphorIcon(
-                                PhosphorIconsRegular.filePdf,
-                                size: 24,
-                                color: AppColors.error,
-                              ),
-                              const SizedBox(width: AppSpacing.sm),
-                              Expanded(
-                                child: Text(
-                                  _attachedFiles[index],
-                                  style: textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                              // Icon
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.grey200,
+                                  borderRadius:
+                                      BorderRadius.circular(AppRadius.sm),
+                                ),
+                                child: PhosphorIcon(
+                                  PhosphorIconsRegular.fileText,
+                                  size: 24,
+                                  color: AppColors.primary,
                                 ),
                               ),
+                              const SizedBox(width: AppSpacing.md),
+
+                              // Content
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Title Input
+                                    TextFormField(
+                                      controller: controller,
+                                      decoration: InputDecoration(
+                                        labelText: 'Document Title',
+                                        hintText: 'e.g., FIR Copy',
+                                        isDense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 12,
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                              AppRadius.sm),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'File: ${attachment['file'].path.split(Platform.pathSeparator).last}',
+                                      style: textTheme.bodySmall?.copyWith(
+                                        color: AppColors.textLight,
+                                        fontSize: 10,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(width: AppSpacing.sm),
+
+                              // Delete Button
                               IconButton(
                                 icon: PhosphorIcon(
-                                  PhosphorIconsRegular.x,
+                                  PhosphorIconsRegular.trash,
                                   size: 20,
                                   color: AppColors.error,
                                 ),

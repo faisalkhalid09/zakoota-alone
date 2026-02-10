@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/auth_service.dart';
 
 /// Profile Screen - User account management and settings
 class ProfileScreen extends StatelessWidget {
@@ -19,90 +21,126 @@ class ProfileScreen extends StatelessWidget {
         child: Column(
           children: [
             // Header Section (Navy Background)
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg,
-                vertical: AppSpacing.xl,
-              ),
-              child: Column(
-                children: [
-                  // Large Avatar with Gold Border
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: AppColors.secondary,
-                        width: 3,
-                      ),
-                    ),
-                    child: CircleAvatar(
-                      radius: 50,
-                      backgroundColor: AppColors.grey300,
-                      backgroundImage: const NetworkImage(
-                        'https://api.dicebear.com/7.x/avataaars/png?seed=Ali',
-                      ),
-                    ),
+            StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+              stream: AuthService().getUserStream(),
+              builder: (context, snapshot) {
+                final userData = snapshot.data?.data();
+                final photoUrl = userData?['photoUrl'] as String? ??
+                    'https://api.dicebear.com/7.x/avataaars/png?seed=ZakootaUser';
+                final displayName = userData?['fullName'] as String? ?? 'User';
+                final isVerified =
+                    (userData?['verificationStatus'] as String? ?? 'none') ==
+                        'verified';
+                final createdAtTimestamp = userData?['createdAt'];
+                String memberSince = 'Member since 2024';
+
+                if (createdAtTimestamp != null &&
+                    createdAtTimestamp is Timestamp) {
+                  final date = createdAtTimestamp.toDate();
+                  // Simple formatting, can use intl package if available
+                  final months = [
+                    'Jan',
+                    'Feb',
+                    'Mar',
+                    'Apr',
+                    'May',
+                    'Jun',
+                    'Jul',
+                    'Aug',
+                    'Sep',
+                    'Oct',
+                    'Nov',
+                    'Dec'
+                  ];
+                  memberSince =
+                      'Member since ${months[date.month - 1]} ${date.year}';
+                }
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                    vertical: AppSpacing.xl,
                   ),
-
-                  const SizedBox(height: AppSpacing.md),
-
-                  // User Name
-                  Text(
-                    'Ali Khan',
-                    style: textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.xs),
-
-                  // Verified Badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.secondary.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(AppRadius.full),
-                      border: Border.all(
-                        color: AppColors.secondary,
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        PhosphorIcon(
-                          PhosphorIconsFill.sealCheck,
-                          size: 16,
-                          color: AppColors.secondary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Verified Client',
-                          style: textTheme.bodySmall?.copyWith(
+                  child: Column(
+                    children: [
+                      // Large Avatar with Gold Border
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
                             color: AppColors.secondary,
-                            fontWeight: FontWeight.w600,
+                            width: 3,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
+                        child: CircleAvatar(
+                          radius: 50,
+                          backgroundColor: AppColors.grey300,
+                          backgroundImage: NetworkImage(photoUrl),
+                        ),
+                      ),
 
-                  const SizedBox(height: AppSpacing.sm),
+                      const SizedBox(height: AppSpacing.md),
 
-                  // Member Since
-                  Text(
-                    'Member since Jan 2024',
-                    style: textTheme.bodySmall?.copyWith(
-                      color: Colors.white.withOpacity(0.7),
-                    ),
+                      // User Name
+                      Text(
+                        displayName,
+                        style: textTheme.headlineSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+
+                      const SizedBox(height: AppSpacing.xs),
+
+                      // Verified Badge
+                      if (isVerified)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.sm,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.secondary.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(AppRadius.full),
+                            border: Border.all(
+                              color: AppColors.secondary,
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              PhosphorIcon(
+                                PhosphorIconsFill.sealCheck,
+                                size: 16,
+                                color: AppColors.secondary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Verified Client',
+                                style: textTheme.bodySmall?.copyWith(
+                                  color: AppColors.secondary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      const SizedBox(height: AppSpacing.sm),
+
+                      // Member Since
+                      Text(
+                        memberSince,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: Colors.white.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
 
             // Body Section (White Container with Rounded Top)
@@ -242,9 +280,15 @@ class ProfileScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.go('/login');
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog first
+
+              // Sign out from Firebase
+              await AuthService().signOut();
+
+              if (context.mounted) {
+                context.go('/login');
+              }
             },
             style: TextButton.styleFrom(
               foregroundColor: AppColors.error,

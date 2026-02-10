@@ -5,13 +5,23 @@ import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../features/auth/presentation/welcome_screen.dart';
 import '../../features/auth/presentation/lawyer_welcome.dart';
 import '../../features/auth/presentation/lawyer_signup_screen.dart';
-import '../../features/verification/presentation/verification_screen.dart';
-import '../../features/verification/presentation/pending_screen.dart';
 
 import '../../features/auth/presentation/login_screen.dart';
+import '../../features/auth/presentation/signup_screen.dart'; // Import SignUpScreen
+import '../../features/auth/presentation/client_profile_setup_screen.dart'; // Import ClientProfileSetupScreen
+import '../../features/auth/presentation/client_verification_screen.dart'; // Import ClientVerificationScreen
+import '../../features/auth/presentation/lawyer_signup_screen.dart'; // Import LawyerSignUpScreen
+import '../../features/lawyer_auth/presentation/lawyer_profile_setup_screen.dart'; // Import LawyerProfileSetupScreen
+import '../../features/lawyer_auth/presentation/lawyer_verification_screen.dart'; // Import LawyerVerificationScreen
+import '../../features/lawyer_auth/presentation/verification_pending_screen.dart'; // Import VerificationPendingScreen
+import '../../features/lawyer_auth/presentation/verification_rejected_screen.dart'; // Import VerificationRejectedScreen
+
 import '../../features/dashboard/presentation/client_home_screen.dart';
 import '../../features/cases/presentation/my_cases_screen.dart';
 import '../../features/cases/presentation/case_details_screen.dart';
+import '../../features/cases/presentation/client_case_ad_details_screen.dart';
+import '../../features/cases/presentation/edit_case_screen.dart';
+import '../../features/cases/models/case_model.dart';
 import '../../features/chat/presentation/conversations_screen.dart';
 import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
@@ -32,19 +42,144 @@ import '../../features/lawyer_cases/presentation/lawyer_cases_screen.dart';
 import '../../features/jobs/presentation/job_board_screen.dart';
 import '../../features/jobs/presentation/job_details_screen.dart';
 import '../../features/jobs/data/job_mock_data.dart';
-import '../../features/lawyer_dashboard/presentation/lawyer_profile_screen.dart'
-    as portal_lawyer;
-import '../../features/lawyer_portal/presentation/lawyer_dashboard_screen.dart';
+import '../../features/lawyer_profile/presentation/lawyer_profile_screen.dart';
+
 import '../../features/profile/presentation/saved_lawyers_screen.dart';
 import '../../features/profile/presentation/security_settings_screen.dart';
 import '../../features/profile/presentation/language_settings_screen.dart';
 import '../../features/profile/presentation/help_center_screen.dart';
 import '../../features/profile/presentation/terms_privacy_screen.dart';
+import '../services/auth_service.dart'; // Import AuthService
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+
+// Function to create a custom refresh stream
+Stream<DocumentSnapshot<Map<String, dynamic>>?> _authStream() {
+  return AuthService().getUserStream();
+}
 
 /// GoRouter configuration for the app
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
   debugLogDiagnostics: true,
+  refreshListenable: GoRouterRefreshStream(_authStream()),
+  redirect: (context, state) async {
+    final authService = AuthService();
+    final user = authService.currentUser;
+    final isLoggedIn = user != null;
+
+    // Paths that don't satisfy "isLoggedIn" check (public paths)
+    final isSplash = state.uri.path == '/';
+    final isOnboarding = state.uri.path == '/onboarding';
+    final isLogin = state.uri.path == '/login';
+    final isWelcome = state.uri.path == '/welcome';
+    final isSignup = state.uri.path == '/signup';
+    final isLawyerWelcome = state.uri.path == '/lawyer-welcome';
+    final isLawyerSignup = state.uri.path == '/lawyer-signup';
+
+    // If not logged in, allow public paths, otherwise redirect to login
+    if (!isLoggedIn) {
+      if (isSplash ||
+          isOnboarding ||
+          isLogin ||
+          isWelcome ||
+          isSignup ||
+          isLawyerWelcome ||
+          isLawyerSignup) {
+        return null; // Stick to current path
+      }
+      return '/login'; // Redirect to login for protected routes
+    }
+
+    // If logged in, check verification status
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        return '/login'; // Should not happen ideally
+      }
+
+      final userData = userDoc.data();
+      if (userData == null) return '/login';
+
+      final role = userData['role'];
+
+      // --- CLIENT REDIRECTION ---
+      if (role == 'client') {
+        final verificationStatus = userData['verificationStatus'];
+
+        if (verificationStatus == 'profile_pending' ||
+            verificationStatus == 'none') {
+          // New flow: Profile first
+          if (state.uri.path != '/client-profile-setup')
+            return '/client-profile-setup';
+        } else if (verificationStatus == 'docs_pending') {
+          // Then Docs
+          if (state.uri.path != '/client-verification')
+            return '/client-verification';
+        } else if (verificationStatus == 'pending' ||
+            verificationStatus == 'verified') {
+          // Allow access
+          // Prevent going back to verification or auth screens
+          if (isSplash ||
+              isOnboarding ||
+              isLogin ||
+              isSignup ||
+              isWelcome ||
+              state.uri.path == '/client-profile-setup' ||
+              state.uri.path == '/client-verification') {
+            return '/client-home';
+          }
+        }
+      }
+
+      // --- LAWYER REDIRECTION ---
+      else if (role == 'lawyer') {
+        final verificationStatus = userData['verificationStatus'];
+
+        if (verificationStatus == 'pending_submission') {
+          // Go to Profile Setup
+          if (state.uri.path != '/lawyer-profile-setup')
+            return '/lawyer-profile-setup';
+        } else if (verificationStatus == 'pending_docs') {
+          // Go to Document Verification
+          if (state.uri.path != '/lawyer-verification')
+            return '/lawyer-verification';
+        } else if (verificationStatus == 'pending_approval') {
+          // Go to Under Review
+          if (state.uri.path != '/verification-pending')
+            return '/verification-pending';
+        } else if (verificationStatus == 'rejected') {
+          // Go to Rejected
+          if (state.uri.path != '/verification-rejected')
+            return '/verification-rejected';
+        } else if (verificationStatus == 'approved') {
+          // Go to Dashboard
+          // Prevent access to auth/setup screens
+          if (isSplash ||
+              isOnboarding ||
+              isLogin ||
+              isSignup ||
+              isWelcome ||
+              isLawyerWelcome ||
+              isLawyerSignup ||
+              state.uri.path == '/lawyer-profile-setup' ||
+              state.uri.path == '/lawyer-verification' ||
+              state.uri.path == '/verification-pending') {
+            return '/lawyer-dashboard';
+          }
+        }
+      }
+    } catch (e) {
+      print('Error in redirect: $e');
+      return null;
+    }
+
+    return null; // No redirect needed
+  },
+
   routes: [
     // Splash Screen (Root)
     GoRoute(
@@ -67,6 +202,27 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const WelcomeScreen(),
     ),
 
+    // Client Sign Up Screen - NEW
+    GoRoute(
+      path: '/signup',
+      name: 'signup',
+      builder: (context, state) => const SignUpScreen(),
+    ),
+
+    // Client Profile Setup Screen - NEW
+    GoRoute(
+      path: '/client-profile-setup',
+      name: 'client-profile-setup',
+      builder: (context, state) => const ClientProfileSetupScreen(),
+    ),
+
+    // Client Verification Screen - NEW
+    GoRoute(
+      path: '/client-verification',
+      name: 'client-verification',
+      builder: (context, state) => const ClientVerificationScreen(),
+    ),
+
     // Lawyer Welcome Screen
     GoRoute(
       path: '/lawyer-welcome',
@@ -81,25 +237,37 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const LawyerSignUpScreen(),
     ),
 
-    // Lawyer Dashboard Screen
+    // Lawyer Profile Setup Screen - NEW
     GoRoute(
-      path: '/lawyer-dashboard',
-      name: 'lawyer-dashboard',
-      builder: (context, state) => const LawyerDashboardScreen(),
+      path: '/lawyer-profile-setup',
+      name: 'lawyer-profile-setup',
+      builder: (context, state) => const LawyerProfileSetupScreen(),
     ),
 
-    // Lawyer Verification Upload Screen
+    // Lawyer Dashboard Screen moved to shell route below
+
+    // Lawyer Verification Screen
     GoRoute(
       path: '/lawyer-verification',
       name: 'lawyer-verification',
-      builder: (context, state) => const VerificationScreen(),
+      builder: (context, state) => const LawyerVerificationScreen(),
     ),
 
-    // Lawyer Pending Approval Screen
+    // Verification Pending Screen (Consolidated)
     GoRoute(
-      path: '/lawyer-verification-pending',
-      name: 'lawyer-verification-pending',
-      builder: (context, state) => const PendingApprovalScreen(),
+      path: '/verification-pending',
+      name: 'verification-pending',
+      builder: (context, state) => const VerificationPendingScreen(),
+    ),
+
+    // Verification Rejected Screen
+    GoRoute(
+      path: '/verification-rejected',
+      name: 'verification-rejected',
+      builder: (context, state) {
+        final reason = state.extra as String?;
+        return VerificationRejectedScreen(reason: reason);
+      },
     ),
 
     // Job Details Screen
@@ -219,6 +387,26 @@ final GoRouter appRouter = GoRouter(
       },
     ),
 
+    // Client Case Ad Details Screen
+    GoRoute(
+      path: '/case-ad-details',
+      name: 'case-ad-details',
+      builder: (context, state) {
+        final caseModel = state.extra as CaseModel;
+        return ClientCaseAdDetailsScreen(caseModel: caseModel);
+      },
+    ),
+
+    // Edit Case Screen
+    GoRoute(
+      path: '/edit-case',
+      name: 'edit-case',
+      builder: (context, state) {
+        final caseModel = state.extra as CaseModel;
+        return EditCaseScreen(caseModel: caseModel);
+      },
+    ),
+
     // Notifications Screen
     GoRoute(
       path: '/notifications',
@@ -260,8 +448,8 @@ final GoRouter appRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/lawyer-home',
-              name: 'lawyer-home',
+              path: '/lawyer-dashboard',
+              name: 'lawyer-dashboard',
               builder: (context, state) => const LawyerHomeScreen(),
             ),
           ],
@@ -289,8 +477,7 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: '/lawyer-profile',
               name: 'lawyer-portal-profile',
-              builder: (context, state) =>
-                  const portal_lawyer.LawyerProfileScreen(),
+              builder: (context, state) => const LawyerProfileScreen(),
             ),
           ],
         ),
@@ -357,3 +544,21 @@ final GoRouter appRouter = GoRouter(
     ),
   ),
 );
+
+// Helper class for GoRouter refresh stream
+class GoRouterRefreshStream extends ChangeNotifier {
+  GoRouterRefreshStream(Stream<dynamic> stream) {
+    notifyListeners();
+    _subscription = stream.asBroadcastStream().listen(
+          (dynamic _) => notifyListeners(),
+        );
+  }
+
+  late final dynamic _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+}

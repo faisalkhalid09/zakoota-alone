@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/auth_service.dart';
+import '../../cases/models/case_model.dart';
+import '../../cases/services/case_service.dart';
 
-/// Client Home Screen - Main dashboard for clients
+// ... (existing imports)
+
 class ClientHomeScreen extends StatefulWidget {
   const ClientHomeScreen({super.key});
 
@@ -25,6 +30,67 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
         ),
       );
     }
+  }
+
+  Widget _buildEmptyActiveCasesState(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: AppColors.grey200),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: PhosphorIcon(
+                PhosphorIconsRegular.briefcase,
+                color: AppColors.primary,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No active cases',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                  ),
+                  Text(
+                    'Post a new case to get started.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                // Navigate to Post Case
+                context.push('/post-case');
+              },
+              child: const Text('Post Case'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -55,55 +121,93 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
             // C. ACTIVE CASES - Horizontal Scroll
             SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md,
-                      vertical: AppSpacing.sm,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Active Cases',
-                          style: textTheme.headlineSmall?.copyWith(
-                            color: colorScheme.primary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            context.go('/client-cases');
-                          },
-                          child: Text(
-                            'View All',
-                            style: textTheme.labelLarge?.copyWith(
-                              color: colorScheme.secondary,
+              child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+                stream: AuthService().getUserStream(),
+                builder: (context, userSnapshot) {
+                  final userId = userSnapshot.data?.id;
+                  if (userId == null) return const SizedBox.shrink();
+
+                  return StreamBuilder<List<CaseModel>>(
+                    stream: CaseService().getCasesForClient(userId),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const SizedBox(
+                          height: 160,
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        return Padding(
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          child: Text('Error loading cases: ${snapshot.error}'),
+                        );
+                      }
+
+                      final allCases = snapshot.data ?? [];
+                      // Filter for 'open' or 'active' cases
+                      final activeCases = allCases
+                          .where(
+                              (c) => c.status == 'open' || c.status == 'active')
+                          .toList();
+
+                      if (activeCases.isEmpty) {
+                        return _buildEmptyActiveCasesState(context);
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md,
+                              vertical: AppSpacing.sm,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Active Cases',
+                                  style: textTheme.headlineSmall?.copyWith(
+                                    color: colorScheme.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    context.go('/client-cases');
+                                  },
+                                  child: Text(
+                                    'View All',
+                                    style: textTheme.labelLarge?.copyWith(
+                                      color: colorScheme.secondary,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    height: 160,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md,
-                      ),
-                      itemCount: ClientHomeData.activeCases.length,
-                      itemBuilder: (context, index) {
-                        return _ActiveCaseCard(
-                          caseData: ClientHomeData.activeCases[index],
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                ],
+                          SizedBox(
+                            height: 160,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.md,
+                              ),
+                              itemCount: activeCases.length,
+                              itemBuilder: (context, index) {
+                                return _ActiveCaseCard(
+                                  caseModel: activeCases[index],
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                        ],
+                      );
+                    },
+                  );
+                },
               ),
             ),
 
@@ -187,30 +291,44 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
       elevation: 0,
       leading: Padding(
         padding: const EdgeInsets.all(8.0),
-        child: CircleAvatar(
-          backgroundImage: const NetworkImage(
-            'https://i.pravatar.cc/150?img=11',
-          ),
-          backgroundColor: AppColors.grey200,
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+          stream: AuthService().getUserStream(),
+          builder: (context, snapshot) {
+            final userData = snapshot.data?.data();
+            final photoUrl = userData?['photoUrl'] as String? ??
+                'https://api.dicebear.com/7.x/avataaars/png?seed=ZakootaUser';
+            return CircleAvatar(
+              backgroundImage: NetworkImage(photoUrl),
+              backgroundColor: AppColors.grey200,
+            );
+          },
         ),
       ),
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Good Morning,',
-            style: textTheme.bodySmall?.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
-          Text(
-            'Ali Khan',
-            style: textTheme.titleMedium?.copyWith(
-              color: colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
+      title: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+        stream: AuthService().getUserStream(),
+        builder: (context, snapshot) {
+          final userData = snapshot.data?.data();
+          final displayName = userData?['fullName'] as String? ?? 'User';
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Welcome back,',
+                style: textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              Text(
+                displayName,
+                style: textTheme.titleMedium?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          );
+        },
       ),
       actions: [
         // Wallet Chip
@@ -218,33 +336,41 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
           onTap: () {
             context.push('/wallet');
           },
-          child: Container(
-            margin: const EdgeInsets.only(right: AppSpacing.sm),
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md,
-              vertical: AppSpacing.sm,
-            ),
-            decoration: BoxDecoration(
-              color: colorScheme.primary,
-              borderRadius: BorderRadius.circular(AppRadius.full),
-            ),
-            child: Row(
-              children: [
-                PhosphorIcon(
-                  PhosphorIconsRegular.wallet,
-                  color: colorScheme.secondary,
-                  size: 18,
+          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+            stream: AuthService().getUserStream(),
+            builder: (context, snapshot) {
+              final userData = snapshot.data?.data();
+              final walletBalance = userData?['walletBalance'] as int? ?? 0;
+
+              return Container(
+                margin: const EdgeInsets.only(right: AppSpacing.sm),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.sm,
                 ),
-                const SizedBox(width: AppSpacing.xs),
-                Text(
-                  'PKR 5,000',
-                  style: textTheme.labelMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
+                decoration: BoxDecoration(
+                  color: colorScheme.primary,
+                  borderRadius: BorderRadius.circular(AppRadius.full),
                 ),
-              ],
-            ),
+                child: Row(
+                  children: [
+                    PhosphorIcon(
+                      PhosphorIconsRegular.wallet,
+                      color: colorScheme.secondary,
+                      size: 18,
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    Text(
+                      'PKR $walletBalance',
+                      style: textTheme.labelMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
 
@@ -372,81 +498,96 @@ class _PriorityActionCard extends StatelessWidget {
 
 /// Active Case Card Widget
 class _ActiveCaseCard extends StatelessWidget {
-  final ActiveCaseData caseData;
+  final CaseModel caseModel;
 
-  const _ActiveCaseCard({required this.caseData});
+  const _ActiveCaseCard({required this.caseModel});
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Container(
-      width: 200,
-      margin: const EdgeInsets.only(right: AppSpacing.md),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Case ID
-          Text(
-            caseData.caseId,
-            style: textTheme.labelLarge?.copyWith(
-              color: colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
+    // Determine progress based on status
+    double progress = 0.1;
+    if (caseModel.status.toLowerCase() == 'active' ||
+        caseModel.status.toLowerCase() == 'open') progress = 0.5;
+    if (caseModel.status.toLowerCase() == 'closed') progress = 1.0;
 
-          // Lawyer Info
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundImage: NetworkImage(caseData.lawyerAvatar),
-                backgroundColor: AppColors.grey200,
+    return GestureDetector(
+      onTap: () {
+        context.push('/case-ad-details', extra: caseModel);
+      },
+      child: Container(
+        width: 200,
+        margin: const EdgeInsets.only(right: AppSpacing.md),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Case ID - Handle if caseId is long or null
+            Text(
+              caseModel.caseId.length > 8
+                  ? '#${caseModel.caseId.substring(0, 8).toUpperCase()}'
+                  : '#${caseModel.caseId.toUpperCase()}',
+              style: textTheme.labelLarge?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w700,
               ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  caseData.lawyerName,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+
+            // Lawyer Info
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: AppColors.grey200,
+                  child: PhosphorIcon(PhosphorIconsRegular.user, size: 16),
                 ),
-              ),
-            ],
-          ),
-
-          const Spacer(),
-
-          // Progress
-          Text(
-            'Status: ${caseData.status}',
-            style: textTheme.bodySmall?.copyWith(
-              color: AppColors.textSecondary,
-              fontSize: 11,
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    caseModel.title.isNotEmpty ? caseModel.title : 'No Title',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          LinearProgressIndicator(
-            value: caseData.progress,
-            backgroundColor: AppColors.grey200,
-            valueColor: AlwaysStoppedAnimation<Color>(colorScheme.secondary),
-          ),
-        ],
+
+            const Spacer(),
+
+            // Progress
+            Text(
+              'Status: ${caseModel.status}',
+              style: textTheme.bodySmall?.copyWith(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            LinearProgressIndicator(
+              value: progress,
+              backgroundColor: AppColors.grey200,
+              valueColor: AlwaysStoppedAnimation<Color>(colorScheme.secondary),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -616,30 +757,6 @@ class ClientHomeData {
     subtitle: 'Case #204 vs State',
   );
 
-  static final List<ActiveCaseData> activeCases = [
-    ActiveCaseData(
-      caseId: '#CHD-2023',
-      lawyerName: 'Adv. Sarah Ahmed',
-      lawyerAvatar: 'https://i.pravatar.cc/150?img=5',
-      status: 'Evidence',
-      progress: 0.7,
-    ),
-    ActiveCaseData(
-      caseId: '#CHD-2024',
-      lawyerName: 'Adv. Hassan Ali',
-      lawyerAvatar: 'https://i.pravatar.cc/150?img=12',
-      status: 'Hearing',
-      progress: 0.45,
-    ),
-    ActiveCaseData(
-      caseId: '#CHD-2025',
-      lawyerName: 'Adv. Fatima Khan',
-      lawyerAvatar: 'https://i.pravatar.cc/150?img=9',
-      status: 'Discovery',
-      progress: 0.3,
-    ),
-  ];
-
   static final List<ServiceData> services = [
     ServiceData(name: 'Criminal', icon: PhosphorIconsRegular.shield),
     ServiceData(name: 'Property', icon: PhosphorIconsRegular.house),
@@ -688,22 +805,6 @@ class PriorityActionData {
   PriorityActionData({
     required this.title,
     required this.subtitle,
-  });
-}
-
-class ActiveCaseData {
-  final String caseId;
-  final String lawyerName;
-  final String lawyerAvatar;
-  final String status;
-  final double progress;
-
-  ActiveCaseData({
-    required this.caseId,
-    required this.lawyerName,
-    required this.lawyerAvatar,
-    required this.status,
-    required this.progress,
   });
 }
 
