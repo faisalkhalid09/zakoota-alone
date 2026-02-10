@@ -168,6 +168,19 @@ class AuthService {
     }
   }
 
+  // Get User Data (Public Info)
+  Future<Map<String, dynamic>?> getUserData(String uid) async {
+    try {
+      final doc = await _firestore.collection('users').doc(uid).get();
+      if (doc.exists) {
+        return doc.data();
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // Sign Out
   Future<void> signOut() async {
     await _auth.signOut();

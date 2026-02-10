@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../data/job_mock_data.dart';
+import '../../models/job_opportunity.dart';
 
 class JobOpportunityCard extends StatelessWidget {
   final JobOpportunity job;
@@ -217,10 +217,23 @@ class JobOpportunityCard extends StatelessWidget {
   }
 
   String _formatBudget(String budgetLabel) {
+    // Extract the first number found
     final match = RegExp(r'(\d+)').firstMatch(budgetLabel);
     if (match == null) return budgetLabel;
-    final amount = match.group(1) ?? '';
-    return 'PKR ${amount}k'; // Simplified format for chip
+
+    final amountStr = match.group(1) ?? '0';
+    final amount = int.tryParse(amountStr) ?? 0;
+
+    if (amount >= 1000) {
+      // If it's an exact thousand (e.g. 10000 -> 10k)
+      if (amount % 1000 == 0) {
+        return 'PKR ${amount ~/ 1000}k';
+      }
+      // If it's not exact (e.g. 10500 -> 10.5k)
+      return 'PKR ${(amount / 1000).toStringAsFixed(1)}k';
+    }
+
+    return 'PKR $amount';
   }
 }
 

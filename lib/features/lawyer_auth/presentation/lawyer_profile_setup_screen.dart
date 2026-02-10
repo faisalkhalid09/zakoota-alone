@@ -124,8 +124,59 @@ class _LawyerProfileSetupScreenState extends State<LawyerProfileSetupScreen> {
     });
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = _authService.currentUser;
+    if (user != null) {
+      try {
+        final userDoc =
+            await _firestore.collection('users').doc(user.uid).get();
+        if (userDoc.exists && mounted) {
+          final data = userDoc.data();
+
+          // Safety Check: If already approved, redirect to correct flow
+          if (data?['verificationStatus'] == 'approved') {
+            if (data?['publicProfileCompleted'] == true) {
+              context.go('/lawyer-dashboard');
+            } else {
+              context.go('/lawyer-bio-setup');
+            }
+            return;
+          }
+
+          setState(() {
+            if (data != null) {
+              _phoneController.text = data['phoneNumber'] ?? '';
+              _selectedCity = data['city'];
+              _licenseNoController.text = data['barLicenseNo'] ?? '';
+              if (data['enrollmentDate'] != null) {
+                _enrollmentDate =
+                    (data['enrollmentDate'] as Timestamp).toDate();
+              }
+              _yearsOfExperience = data['experienceYears'] ?? 0;
+              _selectedLicenseType = data['licenseType'];
+              if (data['specializations'] != null) {
+                _selectedSpecializations =
+                    List<String>.from(data['specializations']);
+              }
+              _educationController.text = data['education'] ?? '';
+            }
+          });
+        }
+      } catch (e) {
+        debugPrint('Error loading user data: $e');
+      }
+    }
+  }
+
   Future<void> _saveProfile() async {
     if (_formKey.currentState!.validate()) {
+      // ... (Validation checks remain same) ...
       if (_selectedCity == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please select a city')),
@@ -157,8 +208,9 @@ class _LawyerProfileSetupScreenState extends State<LawyerProfileSetupScreen> {
 
       try {
         final userId = _authService.currentUser!.uid;
+        // verificationStatus not needed anymore for logic here
 
-        await _firestore.collection('users').doc(userId).update({
+        final Map<String, dynamic> updateData = {
           'phoneNumber': _phoneController.text.trim(),
           'city': _selectedCity,
           'barLicenseNo': _licenseNoController.text.trim(),
@@ -167,13 +219,13 @@ class _LawyerProfileSetupScreenState extends State<LawyerProfileSetupScreen> {
           'licenseType': _selectedLicenseType,
           'specializations': _selectedSpecializations,
           'education': _educationController.text.trim(),
-          'verificationStatus':
-              'pending_docs', // Update status to move to next step
-        });
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
 
-        if (mounted) {
-          context.go('/lawyer-verification');
-        }
+        // Always treat as New/Pending Flow
+        updateData['verificationStatus'] = 'pending_docs';
+        await _firestore.collection('users').doc(userId).update(updateData);
+        if (mounted) context.go('/lawyer-verification');
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

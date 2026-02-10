@@ -75,8 +75,17 @@ class _ConversationsScreenState extends State<ConversationsScreen>
           ),
         ),
         actions: [
+          // Zing AI Assistant
           IconButton(
-            icon: PhosphorIcon(
+            tooltip: 'Zing AI Assistant',
+            icon: const PhosphorIcon(
+              PhosphorIconsRegular.sparkle,
+              color: Colors.white,
+            ),
+            onPressed: () => context.push('/ai-chat'),
+          ),
+          IconButton(
+            icon: const PhosphorIcon(
               PhosphorIconsRegular.userCirclePlus,
               color: Colors.white,
             ),

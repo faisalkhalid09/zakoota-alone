@@ -10,7 +10,7 @@ import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/signup_screen.dart'; // Import SignUpScreen
 import '../../features/auth/presentation/client_profile_setup_screen.dart'; // Import ClientProfileSetupScreen
 import '../../features/auth/presentation/client_verification_screen.dart'; // Import ClientVerificationScreen
-import '../../features/auth/presentation/lawyer_signup_screen.dart'; // Import LawyerSignUpScreen
+
 import '../../features/lawyer_auth/presentation/lawyer_profile_setup_screen.dart'; // Import LawyerProfileSetupScreen
 import '../../features/lawyer_auth/presentation/lawyer_verification_screen.dart'; // Import LawyerVerificationScreen
 import '../../features/lawyer_auth/presentation/verification_pending_screen.dart'; // Import VerificationPendingScreen
@@ -24,6 +24,7 @@ import '../../features/cases/presentation/edit_case_screen.dart';
 import '../../features/cases/models/case_model.dart';
 import '../../features/chat/presentation/conversations_screen.dart';
 import '../../features/chat/presentation/chat_screen.dart';
+import '../../features/chat/presentation/ai_chat_screen.dart'; // ADDED: AI Chat Screen
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/edit_profile_screen.dart';
 import '../../features/main/presentation/client_main_wrapper.dart';
@@ -41,8 +42,11 @@ import '../../features/lawyer_dashboard/presentation/lawyer_home_screen.dart';
 import '../../features/lawyer_cases/presentation/lawyer_cases_screen.dart';
 import '../../features/jobs/presentation/job_board_screen.dart';
 import '../../features/jobs/presentation/job_details_screen.dart';
-import '../../features/jobs/data/job_mock_data.dart';
+import '../../features/jobs/models/job_opportunity.dart';
 import '../../features/lawyer_profile/presentation/lawyer_profile_screen.dart';
+import '../../features/lawyer_profile/presentation/lawyer_bio_setup_screen.dart';
+import '../../features/lawyer_profile/presentation/lawyer_photo_upload_screen.dart';
+import '../../features/lawyer_profile/presentation/lawyer_edit_profile_screen.dart';
 
 import '../../features/profile/presentation/saved_lawyers_screen.dart';
 import '../../features/profile/presentation/security_settings_screen.dart';
@@ -156,19 +160,34 @@ final GoRouter appRouter = GoRouter(
           if (state.uri.path != '/verification-rejected')
             return '/verification-rejected';
         } else if (verificationStatus == 'approved') {
-          // Go to Dashboard
-          // Prevent access to auth/setup screens
-          if (isSplash ||
-              isOnboarding ||
-              isLogin ||
-              isSignup ||
-              isWelcome ||
-              isLawyerWelcome ||
-              isLawyerSignup ||
-              state.uri.path == '/lawyer-profile-setup' ||
-              state.uri.path == '/lawyer-verification' ||
-              state.uri.path == '/verification-pending') {
-            return '/lawyer-dashboard';
+          // Go to Dashboard or Public Profile Setup
+          final publicProfileCompleted =
+              userData['publicProfileCompleted'] == true;
+
+          if (!publicProfileCompleted) {
+            // Force Public Profile Setup
+            if (state.uri.path == '/lawyer-bio-setup' ||
+                state.uri.path == '/lawyer-photo-upload') {
+              return null; // Allow access to setup pages
+            }
+            return '/lawyer-bio-setup'; // Start at Bio Setup
+          } else {
+            // Approved & Profile Completed -> Dashboard
+            // Prevent access to auth/setup screens
+            if (isSplash ||
+                isOnboarding ||
+                isLogin ||
+                isSignup ||
+                isWelcome ||
+                isLawyerWelcome ||
+                isLawyerSignup ||
+                state.uri.path == '/lawyer-profile-setup' ||
+                state.uri.path == '/lawyer-verification' ||
+                state.uri.path == '/verification-pending' ||
+                state.uri.path == '/lawyer-bio-setup' ||
+                state.uri.path == '/lawyer-photo-upload') {
+              return '/lawyer-dashboard';
+            }
           }
         }
       }
@@ -186,6 +205,23 @@ final GoRouter appRouter = GoRouter(
       path: '/',
       name: 'splash',
       builder: (context, state) => const SplashScreen(),
+    ),
+
+    // AI Chat Screen - ADDED
+    GoRoute(
+      path: '/ai-chat',
+      name: 'ai-chat',
+      builder: (context, state) {
+        final extra = state.extra;
+        String? initialMessage;
+        if (extra is Map) {
+          final v = extra['initialMessage'];
+          if (v is String && v.trim().isNotEmpty) {
+            initialMessage = v.trim();
+          }
+        }
+        return AIChatScreen(initialMessage: initialMessage);
+      },
     ),
 
     // Onboarding Screen
@@ -237,11 +273,25 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const LawyerSignUpScreen(),
     ),
 
-    // Lawyer Profile Setup Screen - NEW
+    // Lawyer Profile Setup Screen
     GoRoute(
       path: '/lawyer-profile-setup',
       name: 'lawyer-profile-setup',
       builder: (context, state) => const LawyerProfileSetupScreen(),
+    ),
+
+    // Lawyer Public Profile Setup (Bio) - NEW
+    GoRoute(
+      path: '/lawyer-bio-setup',
+      name: 'lawyer-bio-setup',
+      builder: (context, state) => const LawyerBioSetupScreen(),
+    ),
+
+    // Lawyer Photo Upload - NEW
+    GoRoute(
+      path: '/lawyer-photo-upload',
+      name: 'lawyer-photo-upload',
+      builder: (context, state) => const LawyerPhotoUploadScreen(),
     ),
 
     // Lawyer Dashboard Screen moved to shell route below
@@ -369,6 +419,13 @@ final GoRouter appRouter = GoRouter(
       path: '/edit-profile',
       name: 'edit-profile',
       builder: (context, state) => const EditProfileScreen(),
+    ),
+
+    // Lawyer Edit Profile Screen
+    GoRoute(
+      path: '/lawyer-edit-profile',
+      name: 'lawyer-edit-profile',
+      builder: (context, state) => const LawyerEditProfileScreen(),
     ),
 
     // Case Details Screen

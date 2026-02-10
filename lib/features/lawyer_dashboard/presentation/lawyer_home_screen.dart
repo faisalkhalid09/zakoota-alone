@@ -1,7 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/auth_service.dart';
 import '../data/lawyer_dashboard_mock_data.dart';
 import '../../jobs/data/job_mock_data.dart';
 import '../../jobs/presentation/widgets/job_opportunity_card.dart';
@@ -16,387 +18,462 @@ class LawyerHomeScreen extends StatelessWidget {
     final leads = LawyerDashboardMockData.leads;
     final ads = LawyerDashboardMockData.activeAds;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            backgroundColor: AppColors.primary,
-            expandedHeight: 180,
-            elevation: 0,
-            leading: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: CircleAvatar(
-                backgroundColor: AppColors.secondary,
-                child: const Text('SA',
-                    style: TextStyle(
-                        color: AppColors.primary, fontWeight: FontWeight.bold)),
-              ),
-            ),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Welcome back,',
-                  style: TextStyle(fontSize: 12, color: AppColors.textLight),
-                ),
-                Text(
-                  'Adv. Sarah',
-                  style: textTheme.titleMedium?.copyWith(
-                    color: AppColors.textOnPrimary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              Container(
-                margin: const EdgeInsets.only(right: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: IconButton(
-                  onPressed: () {},
-                  icon: PhosphorIcon(
-                    PhosphorIconsRegular.bell,
-                    color: AppColors.textOnPrimary,
-                  ),
-                ),
-              ),
-            ],
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                color: AppColors.primary,
-                child: Stack(
-                  children: [
-                    SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                            AppSpacing.lg, 60, AppSpacing.lg, AppSpacing.md),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(AppSpacing.md),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.1),
-                                borderRadius:
-                                    BorderRadius.circular(AppRadius.lg),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.2),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+      stream: AuthService().getUserStream(),
+      builder: (context, snapshot) {
+        // Default/Loading/Error values
+        String fullName = 'Advocate';
+        String? photoUrl;
+        double walletBalance = 0.0;
+        String initials = 'A';
+
+        if (snapshot.hasData &&
+            snapshot.data != null &&
+            snapshot.data!.exists) {
+          final data = snapshot.data!.data();
+          if (data != null) {
+            fullName = data['fullName'] ?? 'Advocate';
+            photoUrl = data['photoUrl'];
+            // Handle wallet balance being int or double
+            walletBalance = (data['walletBalance'] ?? 0).toDouble();
+
+            if (fullName.isNotEmpty) {
+              initials = fullName
+                  .trim()
+                  .split(' ')
+                  .map((e) => e.isNotEmpty ? e[0] : '')
+                  .take(2)
+                  .join()
+                  .toUpperCase();
+            }
+          }
+        } else {
+          debugPrint('LawyerDashboard: Snapshot has NO DATA or does not exist');
+        }
+
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: CustomScrollView(
+            slivers: [
+              SliverAppBar(
+                pinned: true,
+                backgroundColor: AppColors.primary,
+                expandedHeight: 180,
+                elevation: 0,
+                leading: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.secondary,
+                      border: Border.all(color: Colors.white, width: 1),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: photoUrl != null
+                        ? Image.network(
+                            photoUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Center(
+                                child: Text(
+                                  initials,
+                                  style: const TextStyle(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
+                              );
+                            },
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return const Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.primary,
+                                ),
+                              );
+                            },
+                          )
+                        : Center(
+                            child: Text(
+                              initials,
+                              style: const TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.bold,
                               ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding:
-                                        const EdgeInsets.all(AppSpacing.sm),
-                                    decoration: BoxDecoration(
+                            ),
+                          ),
+                  ),
+                ),
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Welcome back,',
+                      style:
+                          TextStyle(fontSize: 12, color: AppColors.textLight),
+                    ),
+                    Text(
+                      fullName,
+                      style: textTheme.titleMedium?.copyWith(
+                        color: AppColors.textOnPrimary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  Container(
+                    margin: const EdgeInsets.only(right: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      onPressed: () {},
+                      icon: PhosphorIcon(
+                        PhosphorIconsRegular.bell,
+                        color: AppColors.textOnPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Container(
+                    color: AppColors.primary,
+                    child: Stack(
+                      children: [
+                        SafeArea(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(AppSpacing.lg,
+                                60, AppSpacing.lg, AppSpacing.md),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(AppSpacing.md),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.1),
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.lg),
+                                    border: Border.all(
                                       color: Colors.white.withOpacity(0.2),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      PhosphorIconsRegular.wallet,
-                                      color: AppColors.secondary,
-                                      size: 24,
                                     ),
                                   ),
-                                  const SizedBox(width: AppSpacing.md),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                  child: Row(
                                     children: [
-                                      Text(
-                                        'Wallet Balance',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                              color:
-                                                  Colors.white.withOpacity(0.8),
-                                            ),
+                                      Container(
+                                        padding:
+                                            const EdgeInsets.all(AppSpacing.sm),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.2),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          PhosphorIconsRegular.wallet,
+                                          color: AppColors.secondary,
+                                          size: 24,
+                                        ),
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'PKR 45,250',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleLarge
-                                            ?.copyWith(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              letterSpacing: 0.5,
+                                      const SizedBox(width: AppSpacing.md),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Wallet Balance',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: Colors.white
+                                                      .withOpacity(0.8),
+                                                ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'PKR ${walletBalance.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleLarge
+                                                ?.copyWith(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                      const Spacer(),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.secondary,
+                                          borderRadius: BorderRadius.circular(
+                                              AppRadius.full),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color:
+                                                  Colors.black.withOpacity(0.2),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            )
+                                          ],
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              PhosphorIconsFill.star,
+                                              color: AppColors.primary,
+                                              size: 14,
                                             ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '4.9',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .labelMedium
+                                                  ?.copyWith(
+                                                    color: AppColors.primary,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ],
                                   ),
-                                  const Spacer(),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.secondary,
-                                      borderRadius:
-                                          BorderRadius.circular(AppRadius.full),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.2),
-                                          blurRadius: 4,
-                                          offset: const Offset(0, 2),
-                                        )
-                                      ],
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(
-                                          PhosphorIconsFill.star,
-                                          color: AppColors.primary,
-                                          size: 14,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '4.9',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelMedium
-                                              ?.copyWith(
-                                                color: AppColors.primary,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Quick Actions
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Quick Actions',
+                        style: textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _QuickAction(
+                            label: 'Post Ad',
+                            icon: PhosphorIconsRegular.megaphone,
+                            color: AppColors.info,
+                          ),
+                          _QuickAction(
+                            label: 'Withdraw',
+                            icon: PhosphorIconsRegular.bank,
+                            color: AppColors.success,
+                          ),
+                          _QuickAction(
+                            label: 'Calendar',
+                            icon: PhosphorIconsRegular.calendar,
+                            color: AppColors.warning,
+                          ),
+                          _QuickAction(
+                            label: 'Analytics',
+                            icon: PhosphorIconsRegular.chartLine,
+                            color: AppColors.primary,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Active Ads Section
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'My Active Ads',
+                            style: textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => context.go(
+                                '/lawyer-job-board'), // Ideally to manage ads page
+                            child: const Text('View All'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      height: 160,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.lg),
+                        scrollDirection: Axis.horizontal,
+                        itemCount: ads.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(width: AppSpacing.md),
+                        itemBuilder: (context, index) =>
+                            _AdPerformanceCard(ad: ads[index]),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ),
 
-          // Quick Actions
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Quick Actions',
-                    style: textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _QuickAction(
-                        label: 'Post Ad',
-                        icon: PhosphorIconsRegular.megaphone,
-                        color: AppColors.info,
-                      ),
-                      _QuickAction(
-                        label: 'Withdraw',
-                        icon: PhosphorIconsRegular.bank,
-                        color: AppColors.success,
-                      ),
-                      _QuickAction(
-                        label: 'Calendar',
-                        icon: PhosphorIconsRegular.calendar,
-                        color: AppColors.warning,
-                      ),
-                      _QuickAction(
-                        label: 'Analytics',
-                        icon: PhosphorIconsRegular.chartLine,
-                        color: AppColors.primary,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
+              const SliverGap(AppSpacing.lg),
 
-          // Active Ads Section
-          SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
+              // Agenda Section
+              SliverToBoxAdapter(
+                child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'My Active Ads',
+                        "Today's Agenda",
                         style: textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
                       ),
-                      TextButton(
-                        onPressed: () => context.go(
-                            '/lawyer-job-board'), // Ideally to manage ads page
-                        child: const Text('View All'),
+                      const SizedBox(height: AppSpacing.md),
+                      Container(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(AppRadius.lg),
+                          border: Border.all(color: AppColors.grey200),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.secondary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.gavel,
+                                  color: AppColors.secondary),
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Hearing: Case #204',
+                                    style: textTheme.titleSmall
+                                        ?.copyWith(fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'High Court, Courtroom 4',
+                                    style: textTheme.bodySmall?.copyWith(
+                                        color: AppColors.textSecondary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                '10:00 AM',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-                SizedBox(
-                  height: 160,
-                  child: ListView.separated(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: ads.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(width: AppSpacing.md),
-                    itemBuilder: (context, index) =>
-                        _AdPerformanceCard(ad: ads[index]),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SliverGap(AppSpacing.lg),
-
-          // Agenda Section
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Today's Agenda",
-                    style: textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                      border: Border.all(color: AppColors.grey200),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.secondary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.gavel,
-                              color: AppColors.secondary),
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Hearing: Case #204',
-                                style: textTheme.titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'High Court, Courtroom 4',
-                                style: textTheme.bodySmall
-                                    ?.copyWith(color: AppColors.textSecondary),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text(
-                            '10:00 AM',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ),
-            ),
-          ),
 
-          const SliverGap(AppSpacing.xl),
+              const SliverGap(AppSpacing.xl),
 
-          // New Job Matches
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              // New Job Matches
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'New Job Matches',
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'New Job Matches',
+                            style: textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => context.go('/lawyer-job-board'),
+                            child: const Text('Explore'),
+                          ),
+                        ],
                       ),
-                      TextButton(
-                        onPressed: () => context.go('/lawyer-job-board'),
-                        child: const Text('Explore'),
-                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      ...leads.take(3).map((lead) {
+                        // Show top 3 matches
+                        final job = JobMockData.getById(lead.jobId);
+                        if (job == null) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                          child: JobOpportunityCard(
+                              job: job), // Reuse the improved card
+                        );
+                      }),
+                      const SizedBox(height: AppSpacing.xl),
                     ],
                   ),
-                  const SizedBox(height: AppSpacing.sm),
-                  ...leads.take(3).map((lead) {
-                    // Show top 3 matches
-                    final job = JobMockData.getById(lead.jobId);
-                    if (job == null) return const SizedBox.shrink();
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                      child: JobOpportunityCard(
-                          job: job), // Reuse the improved card
-                    );
-                  }),
-                  const SizedBox(height: AppSpacing.xl),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

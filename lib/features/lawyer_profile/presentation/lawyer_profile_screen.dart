@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../data/lawyer_profile_mock_data.dart';
+
 import 'package:go_router/go_router.dart';
 import '../../../../core/services/auth_service.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart'; // Added
 
 class LawyerProfileScreen extends StatefulWidget {
   const LawyerProfileScreen({super.key});
@@ -14,14 +16,14 @@ class LawyerProfileScreen extends StatefulWidget {
 
 class _LawyerProfileScreenState extends State<LawyerProfileScreen> {
   final AuthService _authService = AuthService();
-  bool _isAcceptingCase = LawyerProfileMockData.isAcceptingCases;
+  bool _isAcceptingCase = true; // Default
 
   Future<void> _handleLogout() async {
+    // ... (keep existing logout logic)
     debugPrint('Logout button pressed');
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
-        debugPrint('Building Logout Dialog');
         return AlertDialog(
           title: const Text('Logout'),
           content: const Text('Are you sure you want to logout?'),
@@ -50,100 +52,137 @@ class _LawyerProfileScreenState extends State<LawyerProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Header Section (Navy Background)
-            _buildHeader(),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+        stream: _authService.getUserStream(),
+        builder: (context, snapshot) {
+          String fullName = 'Advocate';
+          String location = 'Pakistan';
+          String badge = 'Associate';
+          String? photoUrl;
 
-            // Availability Switch (Floating Card)
-            Transform.translate(
-              offset: const Offset(0, -30),
-              child: _buildAvailabilityCard(),
-            ),
+          // Mock stats for now as we don't have real stats in user doc yet
+          String rating = '4.9';
+          String cases = '24';
+          String experience = '5+ Years';
 
-            // Menu Groups
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          if (snapshot.hasData &&
+              snapshot.data != null &&
+              snapshot.data!.exists) {
+            final data = snapshot.data!.data();
+            if (data != null) {
+              fullName = data['fullName'] ?? 'Advocate';
+              location = data['city'] ?? 'Pakistan';
+              photoUrl = data['photoUrl'];
+              // _isAcceptingCase = data['isAcceptingCases'] ?? true; // Could sync this too
+              experience = '${data['experienceYears'] ?? 0}+ Years';
+              badge = data['licenseType'] ?? 'Associate';
+              debugPrint(
+                  'LawyerProfileScreen: Name=$fullName, PhotoUrl=$photoUrl'); // Debug Log
+            }
+          } else {
+            debugPrint(
+                'LawyerProfileScreen: Snapshot has NO DATA or does not exist');
+          }
+
+          return Scaffold(
+            backgroundColor: Colors.white,
+            body: SingleChildScrollView(
               child: Column(
                 children: [
-                  _buildMenuGroup(
-                    title: 'Practice Management',
-                    items: [
-                      _MenuItem(
-                        icon: PhosphorIconsRegular.wallet,
-                        title: 'My Wallet & Earnings',
-                        iconColor: AppColors.primary,
-                        onTap: () {}, // Link to Wallet
-                      ),
-                      _MenuItem(
-                        icon: PhosphorIconsRegular.megaphone,
-                        title: 'Manage Gigs / Ads',
-                        iconColor: AppColors.secondary,
-                        onTap: () {},
-                      ),
-                      _MenuItem(
-                        icon: PhosphorIconsRegular.shieldCheck,
-                        title: 'Verification Status',
-                        iconColor: AppColors.success,
-                        subtitle: 'Verified',
-                        onTap: () {},
-                      ),
-                    ],
+                  // Header Section (Navy Background)
+                  _buildHeader(fullName, location, badge, photoUrl, rating,
+                      cases, experience),
+
+                  // Availability Switch (Floating Card)
+                  Transform.translate(
+                    offset: const Offset(0, -30),
+                    child: _buildAvailabilityCard(),
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  _buildMenuGroup(
-                    title: 'Account Settings',
-                    items: [
-                      _MenuItem(
-                        icon: PhosphorIconsRegular.pencilSimple,
-                        title: 'Edit Profile',
-                        onTap: () {},
-                      ),
-                      _MenuItem(
-                        icon: PhosphorIconsRegular.bell,
-                        title: 'Notifications',
-                        onTap: () {},
-                      ),
-                      _MenuItem(
-                        icon: PhosphorIconsRegular.lockKey,
-                        title: 'Security & Password',
-                        onTap: () {},
-                      ),
-                    ],
+
+                  // Menu Groups
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                    child: Column(
+                      children: [
+                        // ... (Keep existing menu groups)
+                        _buildMenuGroup(
+                          title: 'Practice Management',
+                          items: [
+                            _MenuItem(
+                              icon: PhosphorIconsRegular.wallet,
+                              title: 'My Wallet & Earnings',
+                              iconColor: AppColors.primary,
+                              onTap: () {}, // Link to Wallet
+                            ),
+                            _MenuItem(
+                              icon: PhosphorIconsRegular.megaphone,
+                              title: 'Manage Gigs / Ads',
+                              iconColor: AppColors.secondary,
+                              onTap: () {},
+                            ),
+                            _MenuItem(
+                              icon: PhosphorIconsRegular.shieldCheck,
+                              title: 'Verification Status',
+                              iconColor: AppColors.success,
+                              subtitle: 'Verified',
+                              onTap: () {},
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        _buildMenuGroup(
+                          title: 'Account Settings',
+                          items: [
+                            _MenuItem(
+                              icon: PhosphorIconsRegular.pencilSimple,
+                              title: 'Edit Profile',
+                              onTap: () => context.push('/lawyer-edit-profile'),
+                            ),
+                            _MenuItem(
+                              icon: PhosphorIconsRegular.bell,
+                              title: 'Notifications',
+                              onTap: () {},
+                            ),
+                            _MenuItem(
+                              icon: PhosphorIconsRegular.lockKey,
+                              title: 'Security & Password',
+                              onTap: () {},
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        _buildMenuGroup(
+                          title: 'Support',
+                          items: [
+                            _MenuItem(
+                              icon: PhosphorIconsRegular.question,
+                              title: 'Help Center',
+                              onTap: () {},
+                            ),
+                            _MenuItem(
+                              icon: PhosphorIconsRegular.signOut,
+                              title: 'Logout',
+                              iconColor: AppColors.error,
+                              textColor: AppColors.error,
+                              hideChevron: true,
+                              onTap: _handleLogout,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 40), // Bottom padding
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  _buildMenuGroup(
-                    title: 'Support',
-                    items: [
-                      _MenuItem(
-                        icon: PhosphorIconsRegular.question,
-                        title: 'Help Center',
-                        onTap: () {},
-                      ),
-                      _MenuItem(
-                        icon: PhosphorIconsRegular.signOut,
-                        title: 'Logout',
-                        iconColor: AppColors.error,
-                        textColor: AppColors.error,
-                        hideChevron: true,
-                        onTap: _handleLogout,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 40), // Bottom padding
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
+          );
+        });
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(String name, String location, String badge,
+      String? photoUrl, String rating, String cases, String experience) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 60, AppSpacing.lg,
@@ -164,19 +203,45 @@ class _LawyerProfileScreenState extends State<LawyerProfileScreen> {
               shape: BoxShape.circle,
               border: Border.all(color: AppColors.secondary, width: 4),
             ),
-            child: const CircleAvatar(
-              radius: 50,
-              backgroundColor: AppColors.grey200,
-              child: Icon(PhosphorIconsRegular.user,
-                  size: 50, color: AppColors.textSecondary),
-              // backgroundImage: NetworkImage('...'), // Placeholder
+            child: Container(
+              width: 100,
+              height: 100,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.grey200,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: photoUrl != null
+                  ? Image.network(
+                      photoUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Center(
+                          child: Icon(PhosphorIconsRegular.user,
+                              size: 50, color: AppColors.textSecondary),
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
+                        );
+                      },
+                    )
+                  : const Center(
+                      child: Icon(PhosphorIconsRegular.user,
+                          size: 50, color: AppColors.textSecondary),
+                    ),
             ),
           ),
           const SizedBox(height: AppSpacing.md),
 
           // Identity
           Text(
-            LawyerProfileMockData.name,
+            name,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -190,7 +255,7 @@ class _LawyerProfileScreenState extends State<LawyerProfileScreen> {
               borderRadius: BorderRadius.circular(AppRadius.full),
             ),
             child: Text(
-              LawyerProfileMockData.badge,
+              badge,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: AppColors.primary,
                     fontWeight: FontWeight.bold,
@@ -199,7 +264,7 @@ class _LawyerProfileScreenState extends State<LawyerProfileScreen> {
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            LawyerProfileMockData.location,
+            location,
             style: TextStyle(
               color: Colors.white.withOpacity(0.7),
               fontSize: 14,
@@ -211,14 +276,11 @@ class _LawyerProfileScreenState extends State<LawyerProfileScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildStat(PhosphorIconsFill.star, LawyerProfileMockData.rating,
-                  'Rating'),
+              _buildStat(PhosphorIconsFill.star, rating, 'Rating'),
               _buildDivider(),
-              _buildStat(PhosphorIconsRegular.briefcase,
-                  LawyerProfileMockData.cases, 'Cases'),
+              _buildStat(PhosphorIconsRegular.briefcase, cases, 'Cases'),
               _buildDivider(),
-              _buildStat(PhosphorIconsRegular.medal,
-                  LawyerProfileMockData.experience, 'Exp'),
+              _buildStat(PhosphorIconsRegular.medal, experience, 'Exp'),
             ],
           ),
         ],

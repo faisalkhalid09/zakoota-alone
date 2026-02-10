@@ -200,4 +200,17 @@ class CaseService {
       }).toList();
     });
   }
+
+  Stream<List<CaseModel>> getOpenCases() {
+    return _firestore
+        .collection('cases')
+        .where('status', isEqualTo: 'open')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return CaseModel.fromMap(doc.data(), doc.id);
+      }).toList();
+    });
+  }
 }

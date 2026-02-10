@@ -370,6 +370,23 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+      // 🤖 ZING AI FLOATING BUTTON (BOTTOM RIGHT - GUARANTEED VISIBLE)
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.auto_awesome),
+        onPressed: () {
+          // Open Zing AI assistant. Pass a helpful default prompt.
+          context.push(
+            '/ai-chat',
+            extra: {
+              'initialMessage':
+                  'Summarize the key legal points I should discuss with $lawyerName.',
+            },
+          );
+        },
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }

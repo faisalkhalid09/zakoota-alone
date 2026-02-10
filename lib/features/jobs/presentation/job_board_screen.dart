@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/constants/app_constants.dart';
-import '../data/job_mock_data.dart';
+import '../../cases/models/case_model.dart';
+import '../../cases/services/case_service.dart';
+import '../../jobs/models/job_opportunity.dart';
 import 'widgets/job_opportunity_card.dart';
 
 /// Job Board Screen
@@ -15,6 +16,7 @@ class JobBoardScreen extends StatefulWidget {
 
 class _JobBoardScreenState extends State<JobBoardScreen> {
   final _searchController = TextEditingController();
+  final _caseService = CaseService();
 
   // Filter States
   String _selectedSort = 'Newest';
@@ -228,146 +230,197 @@ class _JobBoardScreenState extends State<JobBoardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final jobs = JobMockData.jobs;
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          // 1. Simplified Header
-          SliverAppBar(
-            pinned: true,
-            floating: false,
-            backgroundColor: AppColors.primary, // Updated to lighter color
-            elevation: 0,
-            collapsedHeight: 60,
-            toolbarHeight: 60,
-            automaticallyImplyLeading: false, // Remove back button
-            title: Text(
-              'Find Work',
-              style: textTheme.headlineSmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            centerTitle: false,
-          ),
+      body: StreamBuilder<List<CaseModel>>(
+        stream: _caseService.getOpenCases(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-          // 2. Search & Filter Bar (Pinned)
-          SliverToBoxAdapter(
-            child: Container(
-              color: AppColors.primary, // Updated to lighter color
-              padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 50,
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(AppRadius.full),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(PhosphorIconsRegular.magnifyingGlass,
-                              color: AppColors.textSecondary),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: TextField(
-                              controller: _searchController,
-                              decoration: InputDecoration(
-                                hintText: 'Search jobs...',
-                                hintStyle: TextStyle(
-                                    color: AppColors.textSecondary
-                                        .withOpacity(0.6)),
-                                border: InputBorder.none,
-                                isDense: true,
-                                contentPadding: EdgeInsets.zero,
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+
+          final allCases = snapshot.data ?? [];
+          final jobs =
+              allCases.map((c) => JobOpportunity.fromCaseModel(c)).toList();
+
+          // Apply Filters
+          final filteredJobs = jobs.where((job) {
+            // 1. Search Query
+            if (_searchController.text.isNotEmpty) {
+              final query = _searchController.text.toLowerCase();
+              if (!job.title.toLowerCase().contains(query) &&
+                  !job.description.toLowerCase().contains(query)) {
+                return false;
+              }
+            }
+
+            // 2. Filters (Category/Job Type)
+            if (_selectedFilters.isNotEmpty) {
+              // Assuming filters match categories. Note: JobMockData had categories mapping.
+              // CaseModel has 'category' field. JobOpportunity also has 'category'.
+              // If filter is "Corporate", check if job.category == "Corporate"
+              // The current filters in modal are: Corporate, Criminal, Civil, Property, Family
+              if (!_selectedFilters.contains(job.category)) {
+                return false;
+              }
+            }
+
+            // 3. Budget (Optional enhancement, not strictly enforced in current UI logic)
+
+            return true;
+          }).toList();
+
+          return CustomScrollView(
+            slivers: [
+              // 1. Simplified Header
+              SliverAppBar(
+                pinned: true,
+                floating: false,
+                backgroundColor: AppColors.primary, // Updated to lighter color
+                elevation: 0,
+                collapsedHeight: 60,
+                toolbarHeight: 60,
+                automaticallyImplyLeading: false, // Remove back button
+                title: Text(
+                  'Find Work',
+                  style: textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                centerTitle: false,
+              ),
+
+              // 2. Search & Filter Bar (Pinned)
+              SliverToBoxAdapter(
+                child: Container(
+                  color: AppColors.primary, // Updated to lighter color
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          height: 50,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(AppRadius.full),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
                               ),
-                            ),
+                            ],
                           ),
-                          Container(
-                            height: 24,
-                            width: 1,
-                            color: AppColors.grey300,
-                            margin: const EdgeInsets.symmetric(horizontal: 8),
-                          ),
-                          InkWell(
-                            onTap: _showFilterModal,
-                            borderRadius: BorderRadius.circular(4),
-                            child: Row(
-                              children: [
-                                const Icon(PhosphorIconsRegular.faders,
-                                    size: 18, color: AppColors.primary),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Filter',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(
-                                        color: AppColors.primary,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                          child: Row(
+                            children: [
+                              const Icon(PhosphorIconsRegular.magnifyingGlass,
+                                  color: AppColors.textSecondary),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: TextField(
+                                  controller: _searchController,
+                                  onChanged: (value) => setState(
+                                      () {}), // Trigger rebuild on search
+                                  decoration: InputDecoration(
+                                    hintText: 'Search jobs...',
+                                    hintStyle: TextStyle(
+                                        color: AppColors.textSecondary
+                                            .withOpacity(0.6)),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
                                 ),
-                              ],
-                            ),
+                              ),
+                              Container(
+                                height: 24,
+                                width: 1,
+                                color: AppColors.grey300,
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                              InkWell(
+                                onTap: _showFilterModal,
+                                borderRadius: BorderRadius.circular(4),
+                                child: Row(
+                                  children: [
+                                    const Icon(PhosphorIconsRegular.faders,
+                                        size: 18, color: AppColors.primary),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Filter',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: AppColors.primary,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // 3. Job List
+              if (filteredJobs.isEmpty)
+                SliverFillRemaining(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(PhosphorIconsRegular.briefcase,
+                            size: 48, color: AppColors.textSecondary),
+                        const SizedBox(height: AppSpacing.md),
+                        const Text(
+                          'No jobs found',
+                          style: TextStyle(
+                              color: AppColors.textSecondary, fontSize: 16),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final job = filteredJobs[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                          child: JobOpportunityCard(job: job),
+                        );
+                      },
+                      childCount: filteredJobs.length,
+                    ),
+                  ),
+                ),
 
-          // 3. Job List
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg, vertical: AppSpacing.md),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final job = jobs[index];
-                  // Basic client-side filtering (mock)
-                  if (_selectedFilters.isNotEmpty) {
-                    // Check if job matches any selected filter (Title matching for demo)
-                    bool matches = false;
-                    for (final filter in _selectedFilters) {
-                      if (job.title.contains(filter) ||
-                          job.description.contains(filter)) {
-                        matches = true;
-                        break;
-                      }
-                    }
-                    if (!matches) return const SizedBox.shrink();
-                  }
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                    child: JobOpportunityCard(job: job),
-                  );
-                },
-                childCount: jobs.length,
-              ),
-            ),
-          ),
-
-          // Bottom Padding
-          const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
-        ],
+              // Bottom Padding
+              const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
+            ],
+          );
+        },
       ),
     );
   }

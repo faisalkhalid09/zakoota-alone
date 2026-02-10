@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
+
+import '../../models/job_opportunity.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../data/job_mock_data.dart';
 
 Future<void> showSubmitProposalSheet(
   BuildContext context,
